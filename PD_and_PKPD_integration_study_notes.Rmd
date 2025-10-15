@@ -1,0 +1,109 @@
+---
+title: "PD & PK/PD Integration Study Notes (with Plots & Equations)"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+```{r setup, include=FALSE}
+# This chunk sets up the libraries we'll need for the plots.
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center')
+library(ggplot2)
+library(deSolve)
+library(DiagrammeR)
+```
+
+### **1. Introduction to Pharmacodynamics (PD)**
+
+Pharmacodynamics (PD) is the study of ***what the drug does to the body***. It aims to quantify the relationship between drug **exposure** (concentration) and the physiological **response** (effect), known as an Exposure-Response (E-R) relationship.
+
+### **2. The Emax Model**
+
+This is the fundamental model of PD, describing how an effect increases with concentration until it reaches a maximum. It is visualized as a **dose-response curve**.
+
+#### **Key Parameters:**
+- **$E_{max}$**: The **maximum effect** a drug can produce (Efficacy).
+- **$EC_{50}$**: The concentration that produces 50% of the maximum effect (Potency).
+- **n**: The **Hill Coefficient**, which describes the steepness of the curve.
+
+#### **Mathematical Forms**
+
+**1. The Simple Emax Model:** This describes a hyperbolic relationship.
+$$ Effect = \frac{E_{max} \cdot C}{EC_{50} + C} $$
+
+**2. The Sigmoidal Emax Model (Hill Equation):** This adds the Hill coefficient `n` to describe the steepness of the classic "S"-shaped curve.
+$$ Effect = \frac{E_{max} \cdot C^n}{EC_{50}^n + C^n} $$
+
+**3. The Full Model with Baseline:** This is the most common form, adding a baseline effect ($E_0$) that exists without the drug.
+$$ Effect(t) = E_0 + \frac{E_{max} \cdot C(t)^n}{EC_{50}^n + C(t)^n} $$
+
+#### **Example Plot: Dose-Response Curve**
+This plot shows the sigmoidal shape of the Emax model, labeling the key parameters.
+
+```{r emax_plot, echo=FALSE}
+# --- Code for Emax Plot ---
+Emax_val <- 100; EC50_val <- 50; n_val <- 2
+emax_func <- function(C, Emax, EC50, n) { (Emax * C^n) / (EC50^n + C^n) }
+concentration <- seq(0.1, 500, by = 0.1)
+effect <- emax_func(C = concentration, Emax = Emax_val, EC50 = EC50_val, n = n_val)
+plot_data <- data.frame(Concentration = concentration, Effect = effect)
+ggplot(plot_data, aes(x = Concentration, y = Effect)) +
+  geom_line(color = "blue", linewidth = 1) +
+  scale_x_log10(breaks = c(1, 10, 50, 100, 500), labels = c("1", "10", "50", "100", "500")) +
+  geom_hline(yintercept = Emax_val, linetype = "dashed", color = "red") +
+  geom_hline(yintercept = Emax_val / 2, linetype = "dotted", color = "black") +
+  geom_vline(xintercept = EC50_val, linetype = "dotted", color = "black") +
+  annotate("text", x = 200, y = Emax_val - 5, label = "Emax", color = "red", size = 5) +
+  annotate("text", x = EC50_val, y = 10, label = paste("EC50 =", EC50_val), size = 5, angle = 90, vjust = -0.5) +
+  labs(title = "Sigmoidal Emax Dose-Response Curve", x = "Drug Concentration (ng/mL) [Log Scale]", y = "Effect (% of Maximum)") +
+  theme_minimal(base_size = 14)
+```
+
+### **3. Integrating PK and PD**
+
+A **PK/PD model** links a PK model with a PD model to describe and predict the **time course of the drug's effect**.
+
+### **4. Handling Time Delays: Hysteresis & the Effect Compartment**
+
+**Hysteresis** is the phenomenon where the drug's effect lags behind the concentration in the plasma. This is solved with the **Effect-Compartment Model**.
+
+#### **Diagram: Effect Compartment Model**
+```{r diagram_effect_comp, echo=FALSE}
+grViz("
+digraph effect_compartment {
+  rankdir = LR;
+  node [shape = box, style = rounded];
+  Cp [label = 'Plasma Compartment (Cp)'];
+  Ce [label = 'Effect Compartment (Ce)'];
+  Effect [shape = plaintext];
+  Cp -> Ce [label = 'k_e0'];
+  Ce -> Effect;
+}
+")
+```
+
+#### **Mathematical Form:**
+1.  **The delay equation:** Describes the change in concentration in the effect compartment ($C_e$).
+    $$ \frac{dC_e}{dt} = k_{e0} \cdot (C_p(t) - C_e(t)) $$
+2.  **The linked Emax model:** The effect is now driven by $C_e$.
+    $$ Effect(t) = E_0 + \frac{E_{max} \cdot C_e(t)^n}{EC_{50}^n + C_e(t)^n} $$
+
+#### **Example Plot: Hysteresis Loop & Time Course**
+```{r hysteresis_plot, echo=FALSE}
+# --- Code for Hysteresis Plot ---
+pkpd_model <- function(t, state, params) { with(as.list(c(state, params)), { Cp <- C0 * exp(-ke * t); dCe <- ke0 * (Cp - Ce); list(dCe) }) }
+params <- c(C0 = 100, ke = 0.5, ke0 = 0.1, Emax = 100, EC50 = 20, n = 2); state <- c(Ce = 0); times <- seq(0, 10, by = 0.1)
+out <- ode(y = state, times = times, func = pkpd_model, parms = params, method="lsoda"); sim_data <- as.data.frame(out)
+sim_data$Cp <- with(as.list(params), C0 * exp(-ke * sim_data$time)); sim_data$Effect <- with(as.list(params), (Emax * sim_data$Ce^n) / (EC50^n + sim_data$Ce^n))
+p1 <- ggplot(sim_data, aes(x = Cp, y = Effect)) + geom_path(arrow = arrow(length = unit(0.2, "cm"), type = "closed"), color = "purple", linewidth = 1) + labs(title = "Hysteresis Loop", subtitle = "Effect vs. Plasma Concentration", x = "Plasma Concentration (Cp)", y = "Effect") + theme_minimal(base_size = 14)
+p2 <- ggplot(sim_data, aes(x = time)) + geom_line(aes(y = Cp, color = "Plasma (Cp)"), linewidth = 1.2) + geom_line(aes(y = Ce, color = "Effect Site (Ce)"), linewidth = 1.2) + geom_line(aes(y = Effect, color = "Effect"), linetype = "dashed", linewidth = 1.2) + scale_color_manual(values = c("Plasma (Cp)" = "dodgerblue", "Effect Site (Ce)" = "orange", "Effect" = "darkgreen")) + labs(title = "Time Course of Concentrations and Effect", x = "Time (hours)", y = "Concentration / Effect", color = "Metric") + theme_minimal(base_size = 14) + theme(legend.position = "bottom")
+print(p1); print(p2)
+```
+
+### **5. The Sequential PK/PD Modeling Workflow**
+
+1.  **Assemble and Explore Data (EDA)**
+2.  **Build the Population PK Model**
+3.  **Evaluate PK Model & Generate Exposure Metrics (EBEs)**
+4.  **Build the PD Model**

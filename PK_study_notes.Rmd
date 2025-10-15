@@ -1,0 +1,138 @@
+---
+title: "Pharmacokinetics (PK) Study Notes (with Plots & Derivations)"
+output:
+  html_document:
+    toc: true
+    theme: united
+---
+
+```{r setup, include=FALSE}
+# This chunk sets up the libraries we'll need for the plots.
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.align = 'center')
+library(ggplot2)
+```
+
+### **1. Introduction to Pharmacokinetics (PK)**
+
+Pharmacokinetics is the study of ***what the body does to a drug***. It is often summarized by the acronym **ADME**:
+
+-   **Absorption:** How the drug gets into the bloodstream.
+-   **Distribution:** Where the drug goes in the body.
+-   **Metabolism:** How the body breaks down the drug.
+-   **Excretion:** How the body removes the drug.
+
+### **2. Key PK Parameters**
+
+-   **Volume of Distribution ($V_d$):** An *apparent* volume that describes how widely a drug distributes throughout the body.
+-   **Clearance ($CL$):** The volume of blood cleared of a drug per unit of time. It represents the body's efficiency at eliminating the drug.
+
+### **3. Area Under the Curve (AUC)**
+
+AUC represents the **total exposure** of the body to a drug after a dose.
+
+#### **Example Plot: Visualizing AUC**
+This plot shows the concentration of a drug in the blood over time after an IV bolus dose. The shaded region represents the total drug exposure, or AUC.
+
+
+```{r auc_plot, echo=FALSE}
+# --- Code for AUC Plot ---
+pk_func <- function(t, C0, ke) { C0 * exp(-ke * t) }
+time <- seq(0, 24, by = 0.1)
+plot_data <- data.frame(Time = time, Concentration = pk_func(time, C0 = 100, ke = 0.2))
+
+ggplot(plot_data, aes(x = Time, y = Concentration)) +
+  geom_area(fill = "lightblue", alpha = 0.5) +
+  geom_line(color = "blue", linewidth = 1) +
+  annotate("text", x = 10, y = 40, label = "AUC\n(Total Exposure)", size = 6, color = "navy") +
+  labs(title = "Pharmacokinetic Curve After an IV Dose",
+       subtitle = "Visualizing the Area Under the Curve (AUC)",
+       x = "Time (hours)",
+       y = "Drug Concentration (mg/L)") +
+  theme_minimal(base_size = 14)
+```
+
+### **4. Pharmacokinetic Models**
+
+#### **Example Plot: One- vs. Two-Compartment Models**
+This plot shows the concentration decline over time on a log-scale. The one-compartment model shows a simple, mono-exponential decay. The two-compartment model shows a "biexponential" decay, with a fast initial drop (distribution phase) followed by a slower decline (elimination phase).
+
+```{r compartment_plot, echo=FALSE}
+# --- Code for Compartment Model Plot ---
+one_cpt_data <- data.frame(Time = time, Concentration = pk_func(time, C0 = 100, ke = 0.2), Model = "One-Compartment")
+two_cpt_func <- function(t, A, alpha, B, beta) { A * exp(-alpha * t) + B * exp(-beta * t) }
+two_cpt_data <- data.frame(Time = time, Concentration = two_cpt_func(time, A = 70, alpha = 1.5, B = 30, beta = 0.1), Model = "Two-Compartment")
+combined_data <- rbind(one_cpt_data, two_cpt_data)
+
+ggplot(combined_data, aes(x = Time, y = Concentration, color = Model)) +
+  geom_line(linewidth = 1.2) +
+  scale_y_log10() +
+  labs(title = "One- vs. Two-Compartment PK Models",
+       subtitle = "Concentration Profile After an IV Dose (Log Scale)",
+       x = "Time (hours)",
+       y = "Drug Concentration (mg/L) [Log Scale]",
+       color = "Model Type") +
+  theme_minimal(base_size = 14) + theme(legend.position = "top")
+```
+
+### **5. Oral Dosing**
+
+When a drug is taken orally, it must be absorbed first. This leads to new parameters:
+
+-   **$C_{max}$**: The **maximum concentration** the drug reaches.
+-   **$T_{max}$**: The **time** at which $C_{max}$ occurs.
+
+#### **Example Plot: Oral Dosing Curve**
+This plot shows the characteristic rise-and-fall of drug concentration after a pill is taken.
+
+```{r oral_plot, echo=FALSE}
+# --- Code for Oral PK Plot ---
+oral_func <- function(t, Dose, ka, ke, V) { (Dose * ka / V) * (1 / (ka - ke)) * (exp(-ke * t) - exp(-ka * t)) }
+time_oral <- seq(0, 24, by = 0.1)
+conc_oral <- oral_func(time_oral, Dose=1000, ka=1.0, ke=0.2, V=20)
+plot_data_oral <- data.frame(Time = time_oral, Concentration = conc_oral)
+
+Tmax_val <- log(1.0 / 0.2) / (1.0 - 0.2)
+Cmax_val <- oral_func(Tmax_val, Dose=1000, ka=1.0, ke=0.2, V=20)
+
+ggplot(plot_data_oral, aes(x = Time, y = Concentration)) +
+  geom_line(color = "darkgreen", linewidth = 1.2) +
+  geom_hline(yintercept = Cmax_val, linetype = "dashed") +
+  geom_vline(xintercept = Tmax_val, linetype = "dashed") +
+  annotate("point", x = Tmax_val, y = Cmax_val, size = 4, color = "red") +
+  annotate("text", x = Tmax_val + 4, y = Cmax_val, label = paste0("Cmax = ", round(Cmax_val, 1)), size = 5) +
+  annotate("text", x = Tmax_val, y = 5, label = paste0("Tmax = ", round(Tmax_val, 1), " hr"), angle = 90, vjust = -0.5, size = 5) +
+  labs(title = "Pharmacokinetic Curve After an Oral Dose", x = "Time (hours)", y = "Drug Concentration (mg/L)") +
+  theme_minimal(base_size = 14)
+```
+
+### **6. Bioavailability (F) & Bioequivalence**
+
+-   **Bioavailability (F):** The fraction (%) of an oral dose that successfully reaches the bloodstream.
+-   **Bioequivalence:** The standard used to ensure a generic drug performs the same as a brand-name drug.
+
+### **7. Mathematical Derivations & Relationships**
+
+#### **Derivation of $AUC = \frac{Dose}{CL}$**
+
+1.  **Start with the definition of AUC:** The integral of the concentration function $C(t)$ from time 0 to infinity.
+    $$AUC = \int_0^\infty C(t) \,dt$$
+2.  **Substitute the concentration equation** for a one-compartment model: $C(t) = C_0 \cdot e^{-k_e \cdot t}$
+    $$AUC = \int_0^\infty (C_0 \cdot e^{-k_e \cdot t}) \,dt = C_0 \int_0^\infty e^{-k_e \cdot t} \,dt$$
+3.  **Solve the integral:**
+    $$AUC = C_0 \left[ -\frac{1}{k_e}e^{-k_e \cdot t} \right]_0^\infty = C_0 \left( 0 - (-\frac{1}{k_e}) \right) = \frac{C_0}{k_e}$$
+4.  **Substitute known parameter relationships:** We know that $C_0 = \frac{Dose}{V_d}$ and $CL = V_d \cdot k_e$.
+    $$AUC = \frac{(Dose / V_d)}{k_e} = \frac{Dose}{V_d \cdot k_e}$$
+5.  **Final Result:**
+    $$AUC = \frac{Dose}{CL}$$
+
+#### **Core Parameter Relationships**
+
+* **Why is $C_0 = \frac{Dose}{V_d}$?**
+    * This comes from the fundamental definition of concentration: $Concentration = \frac{Amount}{Volume}$. In PK at time zero, the Amount is the `Dose`, the Volume is the apparent `Volume of Distribution`, and the Concentration is `$C_0$`.
+
+* **Why is $CL = V_d \cdot k_e$?**
+    * The elimination rate constant ($k_e$) is the *fraction* of drug eliminated per unit time.
+    * Therefore, the `Rate of Elimination` = $k_e \times (\text{Amount of drug in body})$.
+    * Since `Amount` = `Concentration` $\times$ `Volume`, we can write: `Rate of Elimination` = $k_e \times C(t) \times V_d$.
+    * Clearance is also defined as the rate of elimination normalized by the concentration: $CL = \frac{\text{Rate of Elimination}}{C(t)}$.
+    * Substituting gives: $CL = \frac{k_e \cdot C(t) \cdot V_d}{C(t)}$. The concentration terms $C(t)$ cancel out, leaving $CL = V_d \cdot k_e$.
